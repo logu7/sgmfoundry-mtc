@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -8,6 +8,7 @@ import {
   parseCertificateData,
   type CertificateData,
 } from "@/lib/certificate-schema";
+import { formatDateDDMMYY } from "@/lib/date-format";
 import { CertificateForm } from "./certificate-form";
 import { CertificateSheet } from "./certificate-sheet";
 
@@ -37,6 +38,7 @@ export function CertificateEditor({
   initial?: Partial<CertificateRecordFields>;
 }) {
   const router = useRouter();
+  const isNew = !id;
   const [fields, setFields] = useState<CertificateRecordFields>({
     ...emptyRecord,
     ...initial,
@@ -44,7 +46,9 @@ export function CertificateEditor({
   });
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [assigningNumber, setAssigningNumber] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const setupRanRef = useRef(false);
 
   function updateTopField<K extends keyof CertificateRecordFields>(
     key: K,
@@ -56,6 +60,50 @@ export function CertificateEditor({
   function updateData(next: CertificateData) {
     setFields((f) => ({ ...f, data: next }));
   }
+
+  async function assignNewNumber() {
+    setAssigningNumber(true);
+    try {
+      const supabase = createClient();
+      const { data: rpcData, error: rpcError } = await supabase.rpc("next_certificate_number");
+      if (rpcError) {
+        // Leave the field as-is; the person can still type a number manually.
+        console.error("Could not claim a certificate number", rpcError);
+        return;
+      }
+      setFields((f) => ({ ...f, data: { ...f.data, header: { ...f.data.header, tcNo: rpcData as string } } }));
+    } finally {
+      setAssigningNumber(false);
+    }
+  }
+
+  // For a brand-new certificate only: claim a certificate number and fill in
+  // today's date on the fields that would otherwise print blank. Editing an
+  // existing (already-issued) certificate never touches these automatically.
+  useEffect(() => {
+    if (!isNew || setupRanRef.current) return;
+    setupRanRef.current = true;
+
+    const today = formatDateDDMMYY();
+    setFields((f) => ({
+      ...f,
+      data: {
+        ...f.data,
+        header: { ...f.data.header, dated: f.data.header.dated || today },
+        footer: {
+          ...f.data.footer,
+          preparedByDate: f.data.footer.preparedByDate || today,
+          approvedByDate: f.data.footer.approvedByDate || today,
+        },
+      },
+    }));
+
+    if (!fields.data.header.tcNo) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: claims a number from the server-side sequence once; the setState happens after an await, not synchronously in the effect body
+      void assignNewNumber();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNew]);
 
   // Keep the searchable list columns in sync with the BIS document body.
   function derivedColumns(d: CertificateData) {
@@ -95,7 +143,13 @@ export function CertificateEditor({
             .insert({ ...payload, created_by: userRes.user?.id ?? null });
 
       if (result.error) {
-        setError(result.error.message);
+        const isDuplicate =
+          result.error.code === "23505" || /certificate_no/i.test(result.error.message);
+        setError(
+          isDuplicate
+            ? `Certificate No. "${derived.certificate_no}" is already in use. Choose a different number, or click "New No." to get the next one in sequence.`
+            : result.error.message
+        );
         return;
       }
       router.push("/");
@@ -147,7 +201,12 @@ export function CertificateEditor({
           </p>
         </div>
 
-        <CertificateForm data={fields.data} onChange={updateData} />
+        <CertificateForm
+          data={fields.data}
+          onChange={updateData}
+          onAssignNewNumber={isNew ? assignNewNumber : undefined}
+          assigningNumber={assigningNumber}
+        />
       </div>
 
       {/* right: live preview, sticky */}

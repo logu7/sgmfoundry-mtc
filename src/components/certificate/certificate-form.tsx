@@ -14,9 +14,14 @@ import { Field } from "./field";
 export function CertificateForm({
   data,
   onChange,
+  onAssignNewNumber,
+  assigningNumber,
 }: {
   data: CertificateData;
   onChange: (next: CertificateData) => void;
+  /** Claims a fresh certificate number from the server-side sequence. Omit to hide the control. */
+  onAssignNewNumber?: () => void;
+  assigningNumber?: boolean;
 }) {
   const setIssuer = (patch: Partial<CertificateData["issuer"]>) =>
     onChange({ ...data, issuer: { ...data.issuer, ...patch } });
@@ -75,7 +80,22 @@ export function CertificateForm({
 
       <FormSection title="Certificate header">
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Test Certificate No." value={data.header.tcNo} onChange={(v) => setHeader({ tcNo: v })} mono />
+          <div className="col-span-1">
+            <div className="flex items-end gap-2">
+              <Field label="Test Certificate No." value={data.header.tcNo} onChange={(v) => setHeader({ tcNo: v })} mono className="flex-1" />
+              {onAssignNewNumber && (
+                <button
+                  type="button"
+                  onClick={onAssignNewNumber}
+                  disabled={assigningNumber}
+                  className="mb-0.5 shrink-0 rounded-md border border-slate-300 px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                  title="Claim a fresh number from the certificate sequence"
+                >
+                  {assigningNumber ? "…" : "New No."}
+                </button>
+              )}
+            </div>
+          </div>
           <Field label="Dated" value={data.header.dated} onChange={(v) => setHeader({ dated: v })} placeholder="DD.MM.YY" mono />
           <Field label="To M/s (customer)" value={data.header.toMs} onChange={(v) => setHeader({ toMs: v })} className="col-span-2" />
           <Field label="Customer Address" value={data.header.toMsAddress} onChange={(v) => setHeader({ toMsAddress: v })} as="textarea" className="col-span-2" />
