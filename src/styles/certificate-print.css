@@ -1,0 +1,53 @@
+/* Certificate print styles, shared by the on-screen preview and the
+   headless PDF render route.
+
+   The BIS Annexure-I results table has 13 columns and needs ~228mm of
+   width, so the sheet is A4 *landscape* (297mm x 210mm). */
+
+.mtc-serif {
+  font-family: var(--font-source-serif), Georgia, serif;
+}
+.mtc-sans {
+  font-family: var(--font-inter), system-ui, sans-serif;
+}
+.mtc-mono {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+}
+
+.mtc-sheet {
+  width: 297mm;
+  min-height: 210mm;
+  padding: 8mm 9mm 6mm;
+  box-sizing: border-box;
+}
+
+.mtc-sheet-preview {
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.15), 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 0;
+  }
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .mtc-sheet {
+    width: 297mm !important;
+    height: 210mm !important;
+    min-height: 0 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
