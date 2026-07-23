@@ -1,26 +1,36 @@
 import type { Metadata } from "next";
-import { Inter, Source_Serif_4, IBM_Plex_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import "@/styles/certificate-print.css";
 
-const inter = Inter({
+const inter = localFont({
   variable: "--font-inter",
-  subsets: ["latin"],
   display: "swap",
+  src: [
+    { path: "../../public/fonts/inter-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "../../public/fonts/inter-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "../../public/fonts/inter-latin-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "../../public/fonts/inter-latin-700-normal.woff2", weight: "700", style: "normal" },
+  ],
 });
 
-const sourceSerif = Source_Serif_4({
+const sourceSerif = localFont({
   variable: "--font-source-serif",
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
   display: "swap",
+  src: [
+    { path: "../../public/fonts/source-serif-4-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "../../public/fonts/source-serif-4-latin-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "../../public/fonts/source-serif-4-latin-700-normal.woff2", weight: "700", style: "normal" },
+  ],
 });
 
-const plexMono = IBM_Plex_Mono({
+const plexMono = localFont({
   variable: "--font-plex-mono",
-  subsets: ["latin"],
-  weight: ["500", "600"],
   display: "swap",
+  src: [
+    { path: "../../public/fonts/ibm-plex-mono-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "../../public/fonts/ibm-plex-mono-latin-600-normal.woff2", weight: "600", style: "normal" },
+  ],
 });
 
 export const metadata: Metadata = {
