@@ -1,3 +1,4 @@
+import "server-only";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server.node";
