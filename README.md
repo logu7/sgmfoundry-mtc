@@ -101,12 +101,24 @@ enumerate.
 Targets Vercel (the PDF route needs the Node runtime and uses
 `@sparticuz/chromium` when `process.env.VERCEL` is set).
 
+## List page
+
+The dashboard has instant client-side search across certificate no.,
+customer, and heat no. — fine at this volume; worth moving to a server-side
+query if the certificate count grows into the thousands.
+
+Each row has a **Duplicate** action (`/certificates/new?duplicate_from={id}`)
+for repeat orders. It carries over customer, part, grade, and spec limits
+(min/max), and clears everything batch-specific: certificate no. (a fresh one
+is auto-claimed, same as any new certificate), heat/control unit no.,
+order no. & quantity, dates, and every reported test result — chemistry
+actuals, hardness/tensile actuals, hydrostatic/transverse results, and all of
+Table B (microstructure is a per-batch finding, not a standing spec). The
+intent is that duplicating can never silently carry a previous batch's test
+results forward under a new certificate number.
+
 ## Known gaps / ideas not yet built
 
-- **List page has no search/filter** — fine for a handful of certificates,
-  will want a search box once volume grows.
-- **No "duplicate this certificate"** — repeat orders for the same customer
-  currently mean re-typing everything.
 - **No autosave** — a crashed tab or browser mid-edit loses unsaved changes.
 - **No range/QC validation** — nothing flags an "Actual" value that falls
   outside its stated Min/Max, which would be a useful catch on a compliance

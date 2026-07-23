@@ -187,9 +187,59 @@ export function makeDefaultCertificateData(): CertificateData {
 }
 
 /**
- * Tolerant parse: merges partial/legacy records over defaults rather than
- * throwing, so an older stored `data` blob still opens in the editor.
+ * Produces the data for a "duplicate this certificate" action: keeps
+ * customer, part, and spec-limit information (things that describe the
+ * *product*), and clears anything that describes a specific *batch* —
+ * certificate no., dates, heat/control unit no., order no./quantity, and
+ * every reported test result (chemistry actuals, hardness/tensile actuals,
+ * hydrostatic/transverse results, microstructure findings). The intent is
+ * that a duplicated certificate can never accidentally carry a previous
+ * batch's test results forward under a new certificate number.
+ *
+ * Certificate no. and dates are left blank rather than filled here: the
+ * "new certificate" flow already auto-claims a number and fills today's
+ * date for any record whose header.tcNo/dated are empty, so duplicating
+ * composes with that for free.
  */
+export function duplicateCertificateData(source: CertificateData): CertificateData {
+  return {
+    issuer: { ...source.issuer },
+    header: {
+      ...source.header,
+      tcNo: "",
+      dated: "",
+      invoiceNo: "",
+      // toMs, toMsAddress, partNo, partDescription carry over — same customer & product.
+    },
+    rows: source.rows.map((r) => ({
+      ...makeOrderRow(),
+      nomSize: r.nomSize,
+      grade: r.grade,
+      tolerances: r.tolerances,
+      chemicalComposition: r.chemicalComposition,
+      microStructure: r.microStructure,
+      conditionOfDelivery: r.conditionOfDelivery,
+      // orderNoDate, controlUnitNo (heat no.), quantityTonnes, tensileTest,
+      // hardness, transverseTest, hydrostaticTest, remarks reset via makeOrderRow().
+    })),
+    chemistry: source.chemistry.map((block) => ({
+      ...makeChemistryBlock(),
+      elements: block.elements.map((el) => ({ ...el, actual: "" })), // keep min/max spec, clear the actual result
+      // controlUnitNo resets via makeChemistryBlock().
+    })),
+    micro: source.micro.map(() => makeMicroBlock()), // every field here is a per-batch finding; reset all, keep the row count
+    footer: {
+      ...makeDefaultCertificateData().footer,
+      complianceStatement: source.footer.complianceStatement,
+      preparedByName: source.footer.preparedByName,
+      approvedByName: source.footer.approvedByName,
+      // remarks, wagonNo, truckNo, preparedByDate, approvedByDate reset —
+      // dispatch details and sign-off dates for a new batch.
+    },
+  };
+}
+
+
 export function parseCertificateData(raw: unknown): CertificateData {
   const result = certificateDataSchema.safeParse(raw);
   if (result.success) return result.data;
