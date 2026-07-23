@@ -5,6 +5,10 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 export const dynamic = "force-dynamic";
 
+function encodePayload(data: unknown): string {
+  return Buffer.from(JSON.stringify(data), "utf8").toString("base64url");
+}
+
 export async function POST(req: NextRequest) {
   let body: unknown;
   try {
@@ -18,8 +22,8 @@ export async function POST(req: NextRequest) {
     certificateNo?: string;
   };
   const data = parseCertificateData(rawData);
-  const { renderCertificateHtml } = await import("@/lib/render-certificate-html");
-  const html = renderCertificateHtml(data);
+  const printUrl = new URL("/certificates/print", req.nextUrl.origin);
+  printUrl.searchParams.set("data", encodePayload(data));
 
   const isVercel = !!process.env.VERCEL;
 
@@ -40,7 +44,9 @@ export async function POST(req: NextRequest) {
     }
 
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle" });
+    await page.goto(printUrl.toString(), { waitUntil: "networkidle" });
+    await page.emulateMedia({ media: "print" });
+    await page.evaluate(() => document.fonts.ready);
     const pdf = await page.pdf({
       format: "A4",
       landscape: true,
