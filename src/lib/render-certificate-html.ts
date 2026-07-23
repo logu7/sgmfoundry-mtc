@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToStaticMarkup } from "react-dom/server.node";
 import type { CertificateData } from "./certificate-schema";
 import { CertificateSheet } from "@/components/certificate/certificate-sheet";
 import { CERTIFICATE_STATIC_CSS } from "./certificate-static-css";
