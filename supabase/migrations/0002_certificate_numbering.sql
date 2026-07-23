@@ -7,7 +7,7 @@
 -- sequence rather than risking a collision. This mirrors how a physical
 -- numbered certificate book works — a spoiled page is voided, not reused.
 
-create table public.certificate_number_sequences (
+create table if not exists public.certificate_number_sequences (
   financial_year text primary key,
   last_number integer not null default 0
 );
