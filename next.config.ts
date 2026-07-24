@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   // Chromium binary files. If webpack bundles it, those paths break and the
   // function can't find the binary on Vercel. playwright-core must also be
   // kept external so it can locate its own native modules at runtime.
-  serverExternalPackages: ["@sparticuz/chromium", "playwright-core"],
+  serverExternalPackages: ["@sparticuz/chromium", "playwright-core", "puppeteer-core"],
 };
 
 export default nextConfig;
