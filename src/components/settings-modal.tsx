@@ -1,0 +1,212 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { getMeta, setMeta } from "@/lib/db";
+import { createPinRecord, lockNow, type PinRecord } from "@/lib/pin";
+import {
+  DEFAULT_DEFAULTS,
+  DEFAULT_ISSUER,
+  type Defaults,
+  type Settings,
+} from "@/lib/settings";
+import { DEFAULT_NUMBERING } from "@/lib/certificate-number";
+
+export function SettingsModal({
+  settings,
+  onClose,
+  onSaved,
+}: {
+  settings: Settings;
+  onClose: () => void;
+  onSaved: (s: Settings) => void;
+}) {
+  const [issuer, setIssuer] = useState(settings.issuer ?? DEFAULT_ISSUER);
+  const [numbering, setNumbering] = useState(settings.numbering ?? DEFAULT_NUMBERING);
+  const [defaults, setDefaults] = useState<Defaults>(settings.defaults ?? DEFAULT_DEFAULTS);
+  const [hasPin, setHasPin] = useState(false);
+  const [pin, setPin] = useState("");
+  const [pinMsg, setPinMsg] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    getMeta<PinRecord | null>("pin", null).then((r) => setHasPin(!!r));
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    await setMeta("issuer", issuer);
+    await setMeta("numbering", numbering);
+    await setMeta("defaults", defaults);
+    setSaving(false);
+    onSaved({ issuer, numbering, defaults });
+    onClose();
+  }
+
+  async function applyPin() {
+    if (pin.length < 4) {
+      setPinMsg("Use at least 4 digits.");
+      return;
+    }
+    await setMeta("pin", await createPinRecord(pin));
+    setHasPin(true);
+    setPin("");
+    setPinMsg("PIN set. It will be asked on the next unlock.");
+  }
+
+  async function removePin() {
+    await setMeta("pin", null);
+    setHasPin(false);
+    setPinMsg("PIN removed — the app opens without asking.");
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-6">
+      <div className="w-full max-w-2xl rounded-xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+          <h2 className="text-sm font-semibold text-slate-900">Settings</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700">✕</button>
+        </div>
+
+        <div className="space-y-5 px-5 py-4">
+          <section className="space-y-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Issuer (defaults for new certificates)
+            </h3>
+            <Input label="Company name" value={issuer.companyName} onChange={(v) => setIssuer({ ...issuer, companyName: v })} />
+            <Input label="Registered address" value={issuer.registeredAddress} onChange={(v) => setIssuer({ ...issuer, registeredAddress: v })} />
+            <Input label="Second address line (works)" value={issuer.worksAddress} onChange={(v) => setIssuer({ ...issuer, worksAddress: v })} />
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="IS No." value={issuer.isNo} onChange={(v) => setIssuer({ ...issuer, isNo: v })} />
+              <Input label="CM/L licence no." value={issuer.cmlNo} onChange={(v) => setIssuer({ ...issuer, cmlNo: v })} />
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Certificate numbering
+            </h3>
+            <div className="grid grid-cols-3 gap-3">
+              <Input label="Prefix" value={numbering.prefix} onChange={(v) => setNumbering({ ...numbering, prefix: v.toUpperCase() })} />
+              <Input
+                label="Digits"
+                value={String(numbering.pad)}
+                onChange={(v) => setNumbering({ ...numbering, pad: Math.min(6, Math.max(2, Number(v) || 3)) })}
+              />
+              <Input
+                label="Start at"
+                value={String(numbering.start)}
+                onChange={(v) => setNumbering({ ...numbering, start: Math.max(1, Number(v) || 1) })}
+              />
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Format: <span className="font-mono">{numbering.prefix}/26-27/{String(numbering.start).padStart(numbering.pad, "0")}</span>.
+              The financial year runs April–March and the counter restarts at the start value each April.
+            </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Pre-filled values
+            </h3>
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Default grade" value={defaults.grade} onChange={(v) => setDefaults({ ...defaults, grade: v })} />
+              <Input label="Default condition of delivery" value={defaults.conditionOfDelivery} onChange={(v) => setDefaults({ ...defaults, conditionOfDelivery: v })} />
+              <Input label="Default tolerances" value={defaults.tolerances} onChange={(v) => setDefaults({ ...defaults, tolerances: v })} />
+              <Input label="Prepared by" value={defaults.preparedByName} onChange={(v) => setDefaults({ ...defaults, preparedByName: v })} />
+              <Input label="Approved by" value={defaults.approvedByName} onChange={(v) => setDefaults({ ...defaults, approvedByName: v })} />
+            </div>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-slate-500">Attestation paragraph</span>
+              <textarea
+                value={defaults.complianceStatement}
+                onChange={(e) => setDefaults({ ...defaults, complianceStatement: e.target.value })}
+                rows={3}
+                className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm outline-none focus:border-slate-500"
+              />
+            </label>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">App lock</h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="password"
+                inputMode="numeric"
+                placeholder="New PIN (4+ digits)"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                className="w-48 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm outline-none focus:border-slate-500"
+              />
+              <button onClick={applyPin} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-50">
+                {hasPin ? "Change PIN" : "Set PIN"}
+              </button>
+              {hasPin ? (
+                <>
+                  <button onClick={removePin} className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50">
+                    Remove PIN
+                  </button>
+                  <button
+                    onClick={() => {
+                      lockNow();
+                      window.location.reload();
+                    }}
+                    className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-50"
+                  >
+                    Lock now
+                  </button>
+                </>
+              ) : null}
+            </div>
+            {pinMsg ? <p className="text-[11px] text-slate-500">{pinMsg}</p> : null}
+          </section>
+        </div>
+
+        <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3">
+          <button
+            onClick={() => {
+              setIssuer(DEFAULT_ISSUER);
+              setNumbering(DEFAULT_NUMBERING);
+              setDefaults(DEFAULT_DEFAULTS);
+            }}
+            className="text-xs text-slate-500 hover:underline"
+          >
+            Reset to factory defaults
+          </button>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-50">
+              Cancel
+            </button>
+            <button
+              onClick={() => void save()}
+              disabled={saving}
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Save settings"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Input({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs font-medium text-slate-500">{label}</span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
+      />
+    </label>
+  );
+}

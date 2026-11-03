@@ -8,6 +8,7 @@ export function Field({
   mono,
   className,
   as = "input",
+  list,
 }: {
   label: string;
   value: string;
@@ -16,6 +17,7 @@ export function Field({
   mono?: boolean;
   className?: string;
   as?: "input" | "textarea";
+  list?: string;
 }) {
   const inputClass = cn(
     "w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm outline-none transition-colors",
@@ -40,6 +42,7 @@ export function Field({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
+          list={list}
           className={inputClass}
         />
       )}

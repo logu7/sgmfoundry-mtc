@@ -1,0 +1,420 @@
+/* =============================================================
+   BIS Annexure-I — Test Certificate for Grey Iron Castings
+   Single A4 landscape sheet (297mm x 210mm).
+
+   Plain, hand-written CSS on purpose: this file is the print contract.
+   No utility-class purge, no CDN, no font fetch — what you see on screen
+   is exactly what Chromium emits to the printer / PDF.
+   ============================================================= */
+
+.mtc-sheet {
+  width: 297mm;
+  height: 210mm;
+  padding: 7mm 9mm 5mm;
+  box-sizing: border-box;
+  background: #fff;
+  color: #000;
+  font-family: "Times New Roman", Times, "Liberation Serif", serif;
+  font-size: 9pt;
+  line-height: 1.25;
+  overflow: hidden;
+  position: relative;
+}
+
+.mtc-sheet * {
+  box-sizing: border-box;
+}
+
+/* Auto-fit wrapper: JS sets width + transform so the content always fits
+   inside the printable area. Values are inline so print matches screen. */
+.mtc-body {
+  transform-origin: top left;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.mtc-spacer {
+  flex: 1 1 auto;
+  min-height: 2mm;
+}
+
+/* ---------------- header ---------------- */
+
+.mtc-head {
+  display: grid;
+  grid-template-columns: 40mm 1fr 40mm;
+  align-items: start;
+  gap: 3mm;
+}
+
+.mtc-head-center {
+  text-align: center;
+  line-height: 1.18;
+}
+
+.mtc-annex {
+  font-size: 11pt;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.mtc-annex-sub {
+  font-size: 8.6pt;
+}
+
+.mtc-company {
+  font-size: 13pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-top: 1.4mm;
+  letter-spacing: 0.02em;
+}
+
+.mtc-company-addr {
+  font-size: 8.6pt;
+  line-height: 1.22;
+}
+
+.mtc-isi {
+  border: 0.9pt solid #000;
+  padding: 1.8mm 2.2mm;
+  font-size: 8.2pt;
+  line-height: 1.35;
+  justify-self: end;
+  width: 42mm;
+}
+
+.mtc-isi-title {
+  font-weight: 700;
+}
+
+/* ---------------- title ---------------- */
+
+.mtc-title {
+  text-align: center;
+  margin-top: 5mm;
+  line-height: 1.24;
+}
+
+.mtc-title-main {
+  font-size: 13pt;
+  font-weight: 700;
+}
+
+.mtc-title-sub {
+  font-size: 11pt;
+  font-weight: 700;
+}
+
+.mtc-tcno {
+  margin-top: 2.6mm;
+  font-size: 10.5pt;
+  font-weight: 700;
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 1.5mm;
+}
+
+.mtc-tcno-value {
+  font-weight: 700;
+  min-width: 62mm;
+  border-bottom: 0.7pt solid #000;
+  padding: 0 2mm 0.4mm;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------- To M/s + Dated ---------------- */
+
+.mtc-toms {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10mm;
+  margin-top: 4.5mm;
+  font-size: 10pt;
+}
+
+.mtc-line {
+  display: flex;
+  align-items: baseline;
+  gap: 1.5mm;
+}
+
+.mtc-line-fill {
+  flex: 1;
+  min-width: 20mm;
+  border-bottom: 0.6pt solid #000;
+  padding: 0 2mm 0.4mm;
+  min-height: 4.2mm;
+}
+
+.mtc-line-dated {
+  flex: 0 0 52mm;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.mtc-cust-addr {
+  font-size: 8pt;
+  line-height: 1.25;
+  margin-top: 0.8mm;
+  padding-left: 10mm;
+  max-width: 150mm;
+  white-space: pre-line;
+}
+
+.mtc-cust-meta {
+  font-size: 7.6pt;
+  color: #333;
+  padding-left: 10mm;
+}
+
+/* ---------------- certification paragraph ---------------- */
+
+.mtc-cert-para {
+  margin-top: 3.4mm;
+  font-size: 9.4pt;
+  line-height: 1.4;
+  text-align: justify;
+  text-justify: inter-word;
+}
+
+.mtc-blank {
+  display: inline-block;
+  min-width: 30mm;
+  border-bottom: 0.6pt solid #000;
+  text-align: center;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.mtc-blank-sm {
+  min-width: 22mm;
+}
+
+/* ---------------- results table ---------------- */
+
+.mtc-ref {
+  margin-top: 3.4mm;
+  text-align: center;
+  font-size: 9.2pt;
+  font-weight: 600;
+}
+
+.mtc-results-title {
+  text-align: center;
+  font-size: 12pt;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 1.2pt;
+  margin-top: 0.8mm;
+  letter-spacing: 0.03em;
+}
+
+.mtc-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  margin-top: 1.6mm;
+  font-size: 8.4pt;
+}
+
+.mtc-table th,
+.mtc-table td {
+  border: 0.55pt solid #000;
+  padding: 1.1mm 0.8mm;
+  vertical-align: middle;
+  word-wrap: break-word;
+}
+
+.mtc-table th {
+  font-weight: 700;
+  text-align: center;
+  font-size: 8pt;
+  line-height: 1.18;
+  hyphens: none;
+  overflow-wrap: normal;
+}
+
+.mtc-table td {
+  height: 9.2mm;
+}
+
+.mtc-table td.c {
+  text-align: center;
+}
+
+.mtc-table sup {
+  font-size: 0.68em;
+  vertical-align: super;
+  line-height: 1;
+  position: static;
+  top: auto;
+  margin-left: 0.2mm;
+}
+
+.mtc-notes {
+  margin-top: 1.4mm;
+  font-size: 8.4pt;
+  line-height: 1.35;
+}
+
+/* ---------------- extras: Table A + Table B ---------------- */
+
+.mtc-extras {
+  display: grid;
+  grid-template-columns: 1.62fr 1fr;
+  gap: 3mm;
+  margin-top: 3.2mm;
+}
+
+.mtc-mini-title {
+  font-size: 8.8pt;
+  font-weight: 700;
+  margin-bottom: 0.8mm;
+}
+
+.mtc-mini-note {
+  font-size: 7.2pt;
+  font-weight: 400;
+  color: #444;
+}
+
+.mtc-mini {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 7.6pt;
+}
+
+.mtc-mini th,
+.mtc-mini td {
+  border: 0.5pt solid #000;
+  padding: 0.8mm 0.6mm;
+  text-align: center;
+  vertical-align: middle;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.mtc-mini th {
+  font-weight: 700;
+  font-size: 7.3pt;
+}
+
+.mtc-mini td.spec {
+  color: #222;
+  font-size: 7.2pt;
+}
+
+.mtc-mini td.act {
+  font-weight: 700;
+}
+
+.mtc-mini td.cu {
+  font-weight: 700;
+  font-size: 7.6pt;
+}
+
+/* ---------------- attestation + sign-off ---------------- */
+
+.mtc-attest {
+  margin-top: 2.8mm;
+  font-size: 8.8pt;
+  font-style: italic;
+  line-height: 1.35;
+  color: #111;
+}
+
+.mtc-foot {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 8mm;
+  margin-top: 4mm;
+}
+
+.mtc-despatch {
+  font-size: 9.5pt;
+  line-height: 2;
+}
+
+.mtc-despatch .mtc-line {
+  max-width: 120mm;
+}
+
+.mtc-for {
+  font-size: 9.5pt;
+  font-weight: 700;
+  text-align: right;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.mtc-signs {
+  display: flex;
+  gap: 10mm;
+  margin-top: 13mm;
+}
+
+.mtc-sign {
+  width: 42mm;
+  border-top: 0.6pt solid #000;
+  padding-top: 0.7mm;
+  font-size: 8.4pt;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.mtc-sign-role {
+  font-weight: 700;
+}
+
+/* ---------------- preview / print scaffolding ---------------- */
+
+.mtc-preview-frame {
+  background: #e9edf2;
+  padding: 14mm;
+  display: flex;
+  justify-content: center;
+  overflow: auto;
+}
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 0;
+  }
+
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    width: 297mm;
+    height: 210mm;
+  }
+
+  .mtc-sheet {
+    margin: 0 !important;
+    box-shadow: none !important;
+    page-break-after: avoid;
+    break-after: avoid;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

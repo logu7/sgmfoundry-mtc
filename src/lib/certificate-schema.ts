@@ -31,6 +31,8 @@ export const headerSchema = z.object({
   dated: z.string().default(""),
   toMs: z.string().default(""), // customer name
   toMsAddress: z.string().default(""),
+  customerContact: z.string().default(""), // remembered with the customer
+  customerGstin: z.string().default(""), // remembered with the customer
   invoiceNo: z.string().default(""), // EXTRA
   partNo: z.string().default(""), // EXTRA
   partDescription: z.string().default(""), // EXTRA

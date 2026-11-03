@@ -1,20 +1,15 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { EditorShell } from "@/components/certificate/editor-shell";
 import { CertificateEditor } from "@/components/certificate/certificate-editor";
+import { PinGate } from "@/components/pin-gate";
 
 export const metadata = { title: "New Certificate — SGM Foundry" };
 
-export default async function NewCertificatePage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
+export default function NewCertificatePage() {
   return (
-    <EditorShell title="New Material Test Certificate">
-      <CertificateEditor />
-    </EditorShell>
+    <PinGate>
+      <EditorShell title="New Material Test Certificate">
+        <CertificateEditor isNew />
+      </EditorShell>
+    </PinGate>
   );
 }

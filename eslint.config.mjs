@@ -13,6 +13,15 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    rules: {
+      // Certificates live in IndexedDB: every screen has to load an external
+      // store on mount and push the result into state. That is exactly the
+      // external-system sync an effect is for, so this compiler heuristic
+      // (aimed at derived state) is off for this app.
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
-import "@/styles/certificate-print.css";
+import "@/styles/certificate-sheet.css";
 
 const inter = localFont({
   variable: "--font-inter",

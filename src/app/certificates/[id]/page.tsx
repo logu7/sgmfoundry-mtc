@@ -1,44 +1,52 @@
-import { notFound, redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
+import { getCertificate, type StoredCertificate } from "@/lib/db";
 import { EditorShell } from "@/components/certificate/editor-shell";
 import { CertificateEditor } from "@/components/certificate/certificate-editor";
-import { parseCertificateData } from "@/lib/certificate-schema";
 
-export const metadata = { title: "Edit Certificate — SGM Foundry" };
+export default function EditCertificatePage() {
+  const params = useParams<{ id: string }>();
+  const id = params?.id;
+  const [record, setRecord] = useState<StoredCertificate | null>(null);
+  const [missing, setMissing] = useState(false);
 
-export default async function EditCertificatePage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  useEffect(() => {
+    if (!id || Array.isArray(id)) return;
+    let cancelled = false;
+    getCertificate(id).then((r) => {
+      if (cancelled) return;
+      if (r) setRecord(r);
+      else setMissing(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
-  const { data: record, error } = await supabase
-    .from("certificates")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (error || !record) notFound();
+  if (missing) {
+    return (
+      <EditorShell title="Certificate not found">
+        <p className="text-sm text-slate-500">
+          This certificate is not in this browser&apos;s database.{" "}
+          <Link href="/" className="text-blue-600 hover:underline">
+            Back to the list
+          </Link>
+          .
+        </p>
+      </EditorShell>
+    );
+  }
 
   return (
-    <EditorShell title="Edit Certificate">
-      <CertificateEditor
-        id={id}
-        initial={{
-          certificate_no: record.certificate_no ?? "",
-          invoice_no: record.invoice_no ?? "",
-          certificate_date: record.certificate_date ?? "",
-          heat_number: record.heat_number ?? "",
-          customer_name: record.customer_name ?? "",
-          data: parseCertificateData(record.data),
-        }}
-      />
+    <EditorShell title="Edit Material Test Certificate">
+      {record ? (
+        <CertificateEditor initial={record} />
+      ) : (
+        <p className="text-sm text-slate-400">Loading…</p>
+      )}
     </EditorShell>
   );
 }
