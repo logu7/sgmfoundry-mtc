@@ -38,6 +38,9 @@ npm run build
 npm run start      # bind to the LAN if the shop floor needs it: -H 0.0.0.0
 ```
 
+On Windows you can also double-click **`start-mtc.cmd`** — it installs on first
+run, builds when needed, starts the server and opens the browser.
+
 ## Printing
 
 The **Print / PDF** button (Ctrl+P) saves the certificate first, then opens
