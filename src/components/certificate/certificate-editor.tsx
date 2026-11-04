@@ -3,14 +3,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  ApiError,
   blankCertificate,
   deleteCertificate,
+  getMeta,
   listCertificates,
   listCustomers,
+  newRecordId,
   rememberCustomer,
   saveCertificate,
-  getMeta,
-  newRecordId,
   type Customer,
   type StoredCertificate,
 } from "@/lib/db";
@@ -44,61 +45,71 @@ export function CertificateEditor({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [issuer, numbering, defaults, stored, custs] = await Promise.all([
-        getMeta("issuer", DEFAULT_SETTINGS.issuer),
-        getMeta("numbering", DEFAULT_SETTINGS.numbering),
-        getMeta("defaults", DEFAULT_SETTINGS.defaults),
-        listCertificates(),
-        listCustomers(),
-      ]);
-      if (cancelled) return;
-      const s: Settings = { issuer, numbering, defaults };
-      setSettings(s);
-      setCustomers(custs);
-      setExistingNos(stored.map((c) => c.certificate_no).filter(Boolean));
+      try {
+        const [issuer, numbering, defaults, stored, custs] = await Promise.all([
+          getMeta("issuer", DEFAULT_SETTINGS.issuer),
+          getMeta("numbering", DEFAULT_SETTINGS.numbering),
+          getMeta("defaults", DEFAULT_SETTINGS.defaults),
+          listCertificates(),
+          listCustomers(),
+        ]);
+        if (cancelled) return;
+        const s: Settings = { issuer, numbering, defaults };
+        setSettings(s);
+        setCustomers(custs);
+        setExistingNos(stored.map((c) => c.certificate_no).filter(Boolean));
 
-      if (initial) {
-        setRecord(initial);
-        setAutoNo(false);
-      } else {
-        let draft: StoredCertificate | null = null;
-        try {
-          const raw = localStorage.getItem(DRAFT_KEY);
-          if (raw) draft = JSON.parse(raw) as StoredCertificate;
-        } catch {
-          draft = null;
+        if (initial) {
+          setRecord(initial);
+          setAutoNo(false);
+        } else {
+          let draft: StoredCertificate | null = null;
+          try {
+            const raw = localStorage.getItem(DRAFT_KEY);
+            if (raw) draft = JSON.parse(raw) as StoredCertificate;
+          } catch {
+            draft = null;
+          }
+          const base = draft ?? blankCertificate(todayISO());
+          const tcNo =
+            draft?.certificate_no ||
+            nextCertificateNo(
+              stored.map((c) => c.certificate_no),
+              todayISO(),
+              numbering
+            );
+          const fresh: StoredCertificate = {
+            ...base,
+            certificate_no: tcNo,
+            data: {
+              ...base.data,
+              issuer: { ...s.issuer, ...(draft ? draft.data.issuer : {}) },
+              header: {
+                ...base.data.header,
+                tcNo,
+                dated: base.data.header.dated || formatDate(todayISO()),
+              },
+              footer: {
+                ...base.data.footer,
+                preparedByName: base.data.footer.preparedByName || s.defaults.preparedByName,
+                approvedByName: base.data.footer.approvedByName || s.defaults.approvedByName,
+                preparedByDate: base.data.footer.preparedByDate || formatDate(todayISO()),
+                complianceStatement:
+                  base.data.footer.complianceStatement || s.defaults.complianceStatement,
+              },
+              rows: base.data.rows.map((r) => ({
+                ...r,
+                grade: r.grade || s.defaults.grade,
+                conditionOfDelivery: r.conditionOfDelivery || s.defaults.conditionOfDelivery,
+                tolerances: r.tolerances || s.defaults.tolerances,
+              })),
+            },
+          };
+          setRecord(fresh);
+          setAutoNo(true);
         }
-        const base = draft ?? blankCertificate(todayISO());
-        const tcNo = draft?.certificate_no || nextCertificateNo(stored.map((c) => c.certificate_no), todayISO(), numbering);
-        const fresh: StoredCertificate = {
-          ...base,
-          certificate_no: tcNo,
-          data: {
-            ...base.data,
-            issuer: { ...s.issuer, ...(draft ? draft.data.issuer : {}) },
-            header: {
-              ...base.data.header,
-              tcNo,
-              dated: base.data.header.dated || formatDate(todayISO()),
-            },
-            footer: {
-              ...base.data.footer,
-              preparedByName: base.data.footer.preparedByName || s.defaults.preparedByName,
-              approvedByName: base.data.footer.approvedByName || s.defaults.approvedByName,
-              preparedByDate: base.data.footer.preparedByDate || formatDate(todayISO()),
-              complianceStatement:
-                base.data.footer.complianceStatement || s.defaults.complianceStatement,
-            },
-            rows: base.data.rows.map((r) => ({
-              ...r,
-              grade: r.grade || s.defaults.grade,
-              conditionOfDelivery: r.conditionOfDelivery || s.defaults.conditionOfDelivery,
-              tolerances: r.tolerances || s.defaults.tolerances,
-            })),
-          },
-        };
-        setRecord(fresh);
-        setAutoNo(true);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof ApiError ? err.message : "Could not load the certificate.");
       }
     })();
     return () => {
@@ -132,7 +143,11 @@ export function CertificateEditor({
   /** Keep the rolling number following the certificate date until edited by hand. */
   useEffect(() => {
     if (!record || !autoNo || !isNew) return;
-    const wanted = nextCertificateNo(existingNos, record.certificate_date || todayISO(), settings.numbering);
+    const wanted = nextCertificateNo(
+      existingNos,
+      record.certificate_date || todayISO(),
+      settings.numbering
+    );
     if (wanted !== record.data.header.tcNo) {
       setRecord((r) =>
         r
@@ -141,7 +156,11 @@ export function CertificateEditor({
               certificate_no: wanted,
               data: {
                 ...r.data,
-                header: { ...r.data.header, tcNo: wanted, dated: r.data.header.dated || formatDate(r.certificate_date) },
+                header: {
+                  ...r.data.header,
+                  tcNo: wanted,
+                  dated: r.data.header.dated || formatDate(r.certificate_date),
+                },
               },
             }
           : r
@@ -190,17 +209,16 @@ export function CertificateEditor({
           } catch {
             /* ignore */
           }
-          router.replace(`/certificates/${saved.id}`);
+          router.replace(`/certificates/view/?id=${saved.id}`);
         }
-        const custs = await listCustomers();
-        setCustomers(custs);
+        setCustomers(await listCustomers());
         if (!opts?.silent) {
           const stored = await listCertificates();
           setExistingNos(stored.map((c) => c.certificate_no).filter(Boolean));
         }
         return saved;
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not save on this device.");
+        setError(err instanceof ApiError ? err.message : "Could not save on the server.");
         setStatus("idle");
         return null;
       }
@@ -222,7 +240,7 @@ export function CertificateEditor({
       setError("Could not prepare the print job (storage full).");
       return;
     }
-    window.open("/certificates/print", "_blank", "noopener");
+    window.open("/certificates/print/", "_blank", "noopener");
   }, [persist, record]);
 
   /* ---------------- keyboard ---------------- */
@@ -254,7 +272,11 @@ export function CertificateEditor({
   async function handleDuplicate() {
     if (!record) return;
     const all = await listCertificates();
-    const tcNo = nextCertificateNo(all.map((c) => c.certificate_no), todayISO(), settings.numbering);
+    const tcNo = nextCertificateNo(
+      all.map((c) => c.certificate_no),
+      todayISO(),
+      settings.numbering
+    );
     const copy: StoredCertificate = {
       ...record,
       id: newRecordId(),
@@ -264,28 +286,40 @@ export function CertificateEditor({
       updated_at: new Date().toISOString(),
       data: {
         ...record.data,
-        header: {
-          ...record.data.header,
-          tcNo,
-          dated: formatDate(todayISO()),
-          invoiceNo: "",
-        },
+        header: { ...record.data.header, tcNo, dated: formatDate(todayISO()), invoiceNo: "" },
       },
     };
-    await saveCertificate(copy);
-    router.push(`/certificates/${copy.id}`);
+    try {
+      await saveCertificate(copy);
+      router.push(`/certificates/view/?id=${copy.id}`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not duplicate.");
+    }
   }
 
   async function handleDelete() {
     if (!record) return;
-    if (!confirm(`Delete certificate ${record.data.header.tcNo || record.certificate_no}? This cannot be undone.`)) return;
-    await deleteCertificate(record.id);
-    router.push("/");
+    if (
+      !confirm(
+        `Delete certificate ${record.data.header.tcNo || record.certificate_no}? This cannot be undone.`
+      )
+    )
+      return;
+    try {
+      await deleteCertificate(record.id);
+      router.push("/");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not delete.");
+    }
   }
 
   function regenerateNumber() {
     if (!record) return;
-    const wanted = nextCertificateNo(existingNos, record.certificate_date || todayISO(), settings.numbering);
+    const wanted = nextCertificateNo(
+      existingNos,
+      record.certificate_date || todayISO(),
+      settings.numbering
+    );
     setRecord({
       ...record,
       certificate_no: wanted,
@@ -295,11 +329,16 @@ export function CertificateEditor({
   }
 
   if (!record) {
-    return <p className="text-sm text-slate-500">Loading certificate…</p>;
+    return <p className="text-sm text-slate-500">{error ?? "Loading certificate…"}</p>;
   }
 
   const fitLabel = fit.scale > 0.999 ? "fits 1 sheet" : `auto-fit ${Math.round(fit.scale * 100)}%`;
-  const fitTone = fit.scale > 0.9 ? "text-emerald-700 bg-emerald-50 border-emerald-200" : fit.scale > 0.8 ? "text-amber-700 bg-amber-50 border-amber-200" : "text-red-700 bg-red-50 border-red-200";
+  const fitTone =
+    fit.scale > 0.9
+      ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+      : fit.scale > 0.8
+        ? "text-amber-700 bg-amber-50 border-amber-200"
+        : "text-red-700 bg-red-50 border-red-200";
 
   return (
     <div className="flex flex-col xl:flex-row gap-6 min-h-0 flex-1">
@@ -333,10 +372,7 @@ export function CertificateEditor({
                       ? {
                           ...r,
                           certificate_date: date,
-                          data: {
-                            ...r.data,
-                            header: { ...r.data.header, dated: formatDate(date) },
-                          },
+                          data: { ...r.data, header: { ...r.data.header, dated: formatDate(date) } },
                         }
                       : r
                   );
@@ -358,7 +394,10 @@ export function CertificateEditor({
 
           {duplicates ? (
             <p className="rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
-              This number already exists. <button className="underline" onClick={regenerateNumber}>Use the next one</button>
+              This number already exists.{" "}
+              <button className="underline" onClick={regenerateNumber}>
+                Use the next one
+              </button>
             </p>
           ) : null}
 
@@ -421,8 +460,8 @@ export function CertificateEditor({
           </div>
           <SheetPreview data={record.data} onFit={setFit} />
           <p className="text-[11px] text-slate-400">
-            Print dialog: A4, Landscape, Margins = None, Scale = 100% (background graphics on).
-            The sheet already fits — do not use “Fit to page”, it would add white borders.
+            Print dialog: A4, Landscape, Margins = None, Scale = 100% (background graphics on). The
+            sheet already fits — do not use “Fit to page”, it would add white borders.
           </p>
         </div>
       </div>

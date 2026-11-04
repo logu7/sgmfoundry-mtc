@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sgm-mtc",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-01-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": "./out",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page",
+    "run_worker_first": ["/api/*", "/health"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sgm-mtc",
+      "database_id": "0a9501df-062c-4ce3-be19-3147db870ba6",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "PUBLIC_ORIGIN": "https://mtc.sgmfoundry.com"
+  },
+  "routes": [{ "pattern": "mtc.sgmfoundry.com", "custom_domain": true }]
+}

@@ -1,15 +1,13 @@
+/**
+ * Client for the MTC API (Cloudflare Worker + D1).
+ *
+ * All records live in the shared D1 database behind /api, so every device that
+ * opens mtc.sgmfoundry.com sees the same certificates. The browser only holds
+ * the session cookie set by the Worker.
+ */
+
 import type { CertificateData } from "./certificate-schema";
 import { makeDefaultCertificateData } from "./certificate-schema";
-
-/**
- * Local storage for certificates and customers.
- *
- * The app is single-PC / offline-first: everything lives in IndexedDB in the
- * browser profile, with a localStorage mirror as a fallback when IndexedDB is
- * unavailable (private windows, locked-down profiles). No server, no login,
- * no network round-trip — so a save either lands in the device's own database
- * or throws where the UI can show it.
- */
 
 export type StoredCertificate = {
   id: string;
@@ -23,162 +21,121 @@ export type StoredCertificate = {
 };
 
 export type Customer = {
-  id: string; // normalised name, acts as the key
+  id: string;
   name: string;
   address: string;
-  contact: string;
   gstin: string;
-  updated_at: string;
+  contact: string;
   use_count: number;
+  updated_at: string;
 };
 
-export type MetaKey =
-  | "issuer"
-  | "numbering"
-  | "defaults"
-  | "pin"
-  | "last_backup";
+export type MetaKey = "issuer" | "numbering" | "defaults";
 
-const DB_NAME = "sgm-mtc";
-const DB_VERSION = 1;
-type StoreName = "certificates" | "customers" | "meta";
+export type BackupFile = {
+  app: "sgm-mtc";
+  version: number;
+  exported_at: string;
+  certificates: StoredCertificate[];
+  customers: Customer[];
+  meta: Array<{ key: string; value: unknown }>;
+};
 
-let dbPromise: Promise<IDBDatabase> | null = null;
-let idbBroken = false;
-
-async function openDb(): Promise<IDBDatabase> {
-  if (dbPromise) return dbPromise;
-
-  const attempt = new Promise<IDBDatabase>((resolve, reject) => {
-    if (typeof indexedDB === "undefined") {
-      reject(new Error("IndexedDB unavailable"));
-      return;
-    }
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains("certificates")) {
-        const certs = db.createObjectStore("certificates", { keyPath: "id" });
-        certs.createIndex("by_no", "certificate_no", { unique: false });
-        certs.createIndex("by_updated", "updated_at", { unique: false });
-      }
-      if (!db.objectStoreNames.contains("customers")) {
-        db.createObjectStore("customers", { keyPath: "id" });
-      }
-      if (!db.objectStoreNames.contains("meta")) {
-        db.createObjectStore("meta", { keyPath: "key" });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error("IndexedDB open failed"));
-    req.onblocked = () => reject(new Error("IndexedDB blocked by another tab"));
-  });
-
-  dbPromise = attempt;
-  try {
-    return await attempt;
-  } catch (err) {
-    idbBroken = true;
-    dbPromise = null;
-    throw err;
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
   }
 }
 
-/* ---------------- localStorage fallback ---------------- */
+function notifyUnauthorized() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("mtc:unauthorized"));
+}
 
-function lsRead<T>(store: StoreName): T[] {
-  if (typeof localStorage === "undefined") return [];
+async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  let res: Response;
   try {
-    const raw = localStorage.getItem(`mtc:${store}`);
-    return raw ? (JSON.parse(raw) as T[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function lsWrite<T>(store: StoreName, rows: T[]) {
-  if (typeof localStorage === "undefined") return;
-  localStorage.setItem(`mtc:${store}`, JSON.stringify(rows));
-}
-
-/* ---------------- generic helpers ---------------- */
-
-async function withStore<T>(
-  store: StoreName,
-  mode: IDBTransactionMode,
-  fn: (s: IDBObjectStore) => IDBRequest | void
-): Promise<T> {
-  const db = await openDb();
-  return new Promise<T>((resolve, reject) => {
-    const tx = db.transaction(store, mode);
-    const os = tx.objectStore(store);
-    let request: IDBRequest | null = null;
-    try {
-      request = (fn(os) as IDBRequest) ?? null;
-    } catch (err) {
-      reject(err);
-      return;
-    }
-    tx.oncomplete = () => resolve((request?.result as T) ?? (undefined as T));
-    tx.onerror = () => reject(tx.error ?? new Error("IndexedDB transaction failed"));
-    tx.onabort = () => reject(tx.error ?? new Error("IndexedDB transaction aborted"));
-  });
-}
-
-async function getAll<T>(store: StoreName): Promise<T[]> {
-  if (idbBroken) return lsRead<T>(store);
-  try {
-    return await withStore<T[]>(store, "readonly", (s) => s.getAll());
-  } catch {
-    idbBroken = true;
-    return lsRead<T>(store);
-  }
-}
-
-async function put<T extends object>(store: StoreName, value: T, keyPath?: string) {
-  if (idbBroken) {
-    const rows = lsRead<Record<string, unknown>>(store);
-    const key = keyPath ? String((value as Record<string, unknown>)[keyPath]) : "";
-    const idx = rows.findIndex((r) => String(r[keyPath ?? "id"]) === key);
-    if (idx >= 0) rows[idx] = value as Record<string, unknown>;
-    else rows.push(value as Record<string, unknown>);
-    lsWrite(store, rows);
-    return;
-  }
-  try {
-    await withStore<void>(store, "readwrite", (s) => {
-      s.put(value);
+    res = await fetch(path, {
+      credentials: "same-origin",
+      ...init,
+      headers: {
+        ...(init?.body ? { "content-type": "application/json" } : {}),
+        ...(init?.headers ?? {}),
+      },
     });
   } catch {
-    idbBroken = true;
-    await put(store, value, keyPath);
+    throw new ApiError("Cannot reach the server. Check the internet connection.", 0);
+  }
+
+  if (res.status === 401) {
+    notifyUnauthorized();
+    throw new ApiError("Session expired — please sign in again.", 401);
+  }
+
+  const text = await res.text();
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  } catch {
+    payload = {};
+  }
+  if (!res.ok) {
+    const message = typeof payload.error === "string" ? payload.error : `Request failed (${res.status})`;
+    throw new ApiError(message, res.status);
+  }
+  return payload as T;
+}
+
+/* ---------------- session ---------------- */
+
+export async function checkSession(): Promise<boolean> {
+  try {
+    const data = await req<{ authenticated: boolean }>("/api/session");
+    return !!data.authenticated;
+  } catch {
+    return false;
   }
 }
 
-async function del(store: StoreName, key: string) {
-  if (idbBroken) {
-    lsWrite(
-      store,
-      lsRead<Record<string, unknown>>(store).filter((r) => String(r.id) !== key)
+export async function login(password: string): Promise<void> {
+  // Not via req(): a 401 here means "wrong password", not "session expired".
+  let res: Response;
+  try {
+    res = await fetch("/api/login", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+  } catch {
+    throw new ApiError("Cannot reach the server. Check the internet connection.", 0);
+  }
+  const text = await res.text();
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  } catch {
+    payload = {};
+  }
+  if (!res.ok) {
+    throw new ApiError(
+      typeof payload.error === "string" ? payload.error : "Could not sign in.",
+      res.status
     );
-    return;
   }
+}
+
+export async function logout(): Promise<void> {
   try {
-    await withStore<void>(store, "readwrite", (s) => {
-      s.delete(key);
-    });
-  } catch {
-    idbBroken = true;
-    await del(store, key);
+    await req<{ ok: boolean }>("/api/logout", { method: "POST" });
+  } finally {
+    notifyUnauthorized();
   }
 }
 
-async function getOne<T>(store: StoreName, key: string): Promise<T | undefined> {
-  const rows = await getAll<T & { id?: string }>(store);
-  return rows.find((r) => r.id === key) as T | undefined;
-}
-
-/* ---------------- id ---------------- */
+/* ---------------- ids / helpers ---------------- */
 
 export function newRecordId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
@@ -192,48 +149,46 @@ export function normalizeName(name: string): string {
 /* ---------------- certificates ---------------- */
 
 export async function listCertificates(): Promise<StoredCertificate[]> {
-  const rows = await getAll<StoredCertificate>("certificates");
-  return rows.sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
+  const data = await req<{ certificates: StoredCertificate[] }>("/api/certificates");
+  return data.certificates ?? [];
 }
 
 export async function getCertificate(id: string): Promise<StoredCertificate | undefined> {
-  return getOne<StoredCertificate>("certificates", id);
+  try {
+    const data = await req<{ certificate: StoredCertificate }>(
+      `/api/certificates/${encodeURIComponent(id)}`
+    );
+    return data.certificate;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return undefined;
+    throw err;
+  }
 }
 
 export async function saveCertificate(record: StoredCertificate): Promise<StoredCertificate> {
-  const now = new Date().toISOString();
-  const existing = await getCertificate(record.id);
-  const next: StoredCertificate = {
-    ...record,
-    created_at: existing?.created_at ?? record.created_at ?? now,
-    updated_at: now,
-  };
-  await put("certificates", next);
-  await rememberCustomer(
-    next.customer_name,
-    next.data?.header?.toMsAddress ?? "",
-    next.data?.header?.customerContact ?? "",
-    next.data?.header?.customerGstin ?? ""
-  );
-  return next;
+  const data = await req<{ certificate: StoredCertificate | null }>("/api/certificates", {
+    method: "POST",
+    body: JSON.stringify({
+      id: record.id,
+      certificate_no: record.certificate_no,
+      customer_name: record.customer_name,
+      certificate_date: record.certificate_date,
+      heat_numbers: record.heat_numbers,
+      data: record.data,
+    }),
+  });
+  return data.certificate ?? record;
 }
 
 export async function deleteCertificate(id: string): Promise<void> {
-  await del("certificates", id);
+  await req<{ ok: boolean }>(`/api/certificates/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
-/* ---------------- customers (memory) ---------------- */
+/* ---------------- customers ---------------- */
 
 export async function listCustomers(): Promise<Customer[]> {
-  const rows = await getAll<Customer>("customers");
-  return rows.sort((a, b) => a.name.localeCompare(b.name));
-}
-
-export async function findCustomer(name: string): Promise<Customer | undefined> {
-  const key = normalizeName(name);
-  if (!key) return undefined;
-  const all = await listCustomers();
-  return all.find((c) => c.id === key) ?? all.find((c) => c.id.includes(key));
+  const data = await req<{ customers: Customer[] }>("/api/customers");
+  return data.customers ?? [];
 }
 
 export async function rememberCustomer(
@@ -242,93 +197,64 @@ export async function rememberCustomer(
   contact = "",
   gstin = ""
 ): Promise<void> {
-  const key = normalizeName(name);
-  if (!key || key.length < 2) return;
-  const existing = await getOne<Customer>("customers", key);
-  const next: Customer = {
-    id: key,
-    name: name.trim().replace(/\s+/g, " "),
-    address: address.trim() || existing?.address || "",
-    contact: contact.trim() || existing?.contact || "",
-    gstin: gstin.trim() || existing?.gstin || "",
-    updated_at: new Date().toISOString(),
-    use_count: (existing?.use_count ?? 0) + 1,
-  };
-  await put("customers", next);
+  if (normalizeName(name).length < 2) return;
+  await req<{ ok: boolean }>("/api/customers", {
+    method: "POST",
+    body: JSON.stringify({ name, address, contact, gstin }),
+  });
 }
 
 export async function saveCustomer(customer: Customer): Promise<void> {
-  await put("customers", { ...customer, updated_at: new Date().toISOString() });
+  await rememberCustomer(customer.name, customer.address, customer.contact, customer.gstin);
 }
 
 export async function deleteCustomer(id: string): Promise<void> {
-  await del("customers", id);
+  await req<{ ok: boolean }>("/api/customers", { method: "DELETE", body: JSON.stringify({ id }) });
 }
 
-/* ---------------- meta ---------------- */
+/* ---------------- settings (meta) ---------------- */
 
-type MetaRow = { key: string; value: unknown };
+let settingsCache: { at: number; value: Record<string, unknown> } | null = null;
+
+async function allSettings(force = false): Promise<Record<string, unknown>> {
+  if (!force && settingsCache && Date.now() - settingsCache.at < 5000) return settingsCache.value;
+  const data = await req<{ settings: Record<string, unknown> }>("/api/settings");
+  settingsCache = { at: Date.now(), value: data.settings ?? {} };
+  return settingsCache.value;
+}
 
 export async function getMeta<T>(key: MetaKey, fallback: T): Promise<T> {
-  // Meta rows are keyed by `key`, not `id` — getOne() would never match them.
-  const rows = await getAll<MetaRow>("meta");
-  const row = rows.find((r) => r.key === key);
-  if (!row) return fallback;
-  return row.value as T;
+  try {
+    const settings = await allSettings();
+    return (settings[key] as T) ?? fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 export async function setMeta(key: MetaKey, value: unknown): Promise<void> {
-  await put("meta", { key, value } satisfies MetaRow);
+  await req<{ ok: boolean }>("/api/settings", {
+    method: "PUT",
+    body: JSON.stringify({ [key]: value }),
+  });
+  settingsCache = null;
 }
 
 /* ---------------- backup / restore ---------------- */
 
-export type BackupFile = {
-  app: "sgm-mtc";
-  version: 1;
-  exported_at: string;
-  certificates: StoredCertificate[];
-  customers: Customer[];
-  meta: MetaRow[];
-};
-
 export async function exportBackup(): Promise<BackupFile> {
-  return {
-    app: "sgm-mtc",
-    version: 1,
-    exported_at: new Date().toISOString(),
-    certificates: await getAll<StoredCertificate>("certificates"),
-    customers: await getAll<Customer>("customers"),
-    meta: await getAll<MetaRow>("meta"),
-  };
+  return req<BackupFile>("/api/backup");
 }
 
 export async function importBackup(file: BackupFile, mode: "merge" | "replace"): Promise<number> {
-  if (!file || file.app !== "sgm-mtc") throw new Error("Not an SGM MTC backup file.");
-
-  if (mode === "replace") {
-    for (const c of await getAll<StoredCertificate>("certificates")) await del("certificates", c.id);
-    for (const c of await getAll<Customer>("customers")) await del("customers", c.id);
-  }
-
-  let imported = 0;
-  for (const cert of file.certificates ?? []) {
-    if (!cert?.id) continue;
-    await put("certificates", cert);
-    imported += 1;
-  }
-  for (const cust of file.customers ?? []) {
-    if (!cust?.id) continue;
-    await put("customers", cust);
-  }
-  for (const row of file.meta ?? []) {
-    if (!row?.key) continue;
-    await put("meta", row);
-  }
-  return imported;
+  const data = await req<{ ok: boolean; imported: number }>("/api/restore", {
+    method: "POST",
+    body: JSON.stringify({ mode, backup: file }),
+  });
+  return data.imported ?? 0;
 }
 
-/* ---------------- seed ---------------- */
+/* ---------------- new record ---------------- */
 
 export function blankCertificate(dateISO: string): StoredCertificate {
   const now = new Date().toISOString();

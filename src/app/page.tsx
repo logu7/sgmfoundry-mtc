@@ -1,10 +1,10 @@
 import { Dashboard } from "@/components/dashboard";
-import { PinGate } from "@/components/pin-gate";
+import { AuthGate } from "@/components/auth-gate";
 
 export default function HomePage() {
   return (
-    <PinGate>
+    <AuthGate>
       <Dashboard />
-    </PinGate>
+    </AuthGate>
   );
 }

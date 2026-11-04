@@ -1,12 +1,15 @@
 {
   "name": "sgmfoundry-mtc",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build",
-    "start": "next start",
+    "preview": "npm run build && wrangler dev",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc -p tsconfig.worker.json",
     "lint": "eslint",
+    "db:init": "wrangler d1 execute sgm-mtc --remote --file=./migrations/0001_init.sql",
+    "deploy": "npm run build && wrangler deploy",
     "verify:print": "node scripts/verify-print.mjs"
   },
   "dependencies": {
@@ -21,6 +24,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260101.0",
     "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
@@ -30,6 +34,7 @@
     "eslint-config-next": "16.2.11",
     "playwright-core": "^1.61.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.157.0"
   }
 }

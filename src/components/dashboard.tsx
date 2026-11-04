@@ -1,15 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  ApiError,
   deleteCertificate,
   exportBackup,
   getMeta,
   importBackup,
   listCertificates,
   listCustomers,
+  logout,
   newRecordId,
   saveCertificate,
   type BackupFile,
@@ -28,19 +30,26 @@ export function Dashboard() {
   const [query, setQuery] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [c, cu, issuer, numbering, defaults] = await Promise.all([
-      listCertificates(),
-      listCustomers(),
-      getMeta("issuer", DEFAULT_SETTINGS.issuer),
-      getMeta("numbering", DEFAULT_SETTINGS.numbering),
-      getMeta("defaults", DEFAULT_SETTINGS.defaults),
-    ]);
-    setCerts(c);
-    setCustomers(cu);
-    setSettings({ issuer, numbering, defaults });
+    try {
+      const [c, cu, issuer, numbering, defaults] = await Promise.all([
+        listCertificates(),
+        listCustomers(),
+        getMeta("issuer", DEFAULT_SETTINGS.issuer),
+        getMeta("numbering", DEFAULT_SETTINGS.numbering),
+        getMeta("defaults", DEFAULT_SETTINGS.defaults),
+      ]);
+      setCerts(c);
+      setCustomers(cu);
+      setSettings({ issuer, numbering, defaults });
+      setError(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not load certificates.");
+      setCerts([]);
+    }
   }, []);
 
   useEffect(() => {
@@ -61,7 +70,7 @@ export function Dashboard() {
   async function quickPrint(cert: StoredCertificate) {
     try {
       localStorage.setItem("mtc:print", JSON.stringify({ data: cert.data, certificateNo: cert.certificate_no }));
-      window.open("/certificates/print", "_blank", "noopener");
+      window.open("/certificates/print/", "_blank", "noopener");
     } catch {
       setMessage("Could not open the print view.");
     }
@@ -82,44 +91,64 @@ export function Dashboard() {
         header: { ...cert.data.header, tcNo, dated: formatDate(todayISO()), invoiceNo: "" },
       },
     };
-    await saveCertificate(copy);
-    router.push(`/certificates/${copy.id}`);
+    try {
+      await saveCertificate(copy);
+      router.push(`/certificates/view/?id=${copy.id}`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not duplicate.");
+    }
   }
 
   async function remove(cert: StoredCertificate) {
     if (!confirm(`Delete certificate ${cert.certificate_no}? This cannot be undone.`)) return;
-    await deleteCertificate(cert.id);
-    await load();
-    setMessage(`Deleted ${cert.certificate_no}.`);
+    try {
+      await deleteCertificate(cert.id);
+      await load();
+      setMessage(`Deleted ${cert.certificate_no}.`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not delete.");
+    }
   }
 
   async function downloadBackup() {
-    const backup = await exportBackup();
-    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `sgm-mtc-backup-${todayISO()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setMessage(`Backup downloaded (${backup.certificates.length} certificates).`);
+    try {
+      setBusy(true);
+      const backup = await exportBackup();
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `sgm-mtc-backup-${todayISO()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMessage(`Backup downloaded (${backup.certificates.length} certificates).`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Backup failed.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function onImportFile(file: File) {
     try {
       const parsed = JSON.parse(await file.text()) as BackupFile;
       const replace = confirm(
-        "OK = replace everything on this computer with the backup.\nCancel = merge the backup into what is here."
+        "OK = replace everything in the shared database with this backup.\nCancel = merge the backup into what is already there."
       );
+      setBusy(true);
       const n = await importBackup(parsed, replace ? "replace" : "merge");
       await load();
       setMessage(`Restored ${n} certificates from ${file.name}.`);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Could not read that backup file.");
+      setError(err instanceof ApiError ? err.message : "Could not read that backup file.");
+    } finally {
+      setBusy(false);
     }
   }
 
-  const thisMonth = (certs ?? []).filter((c) => (c.certificate_date ?? "").slice(0, 7) === todayISO().slice(0, 7)).length;
+  const thisMonth = (certs ?? []).filter(
+    (c) => (c.certificate_date ?? "").slice(0, 7) === todayISO().slice(0, 7)
+  ).length;
   const nextNo = nextCertificateNo((certs ?? []).map((c) => c.certificate_no), todayISO(), settings.numbering);
 
   return (
@@ -129,22 +158,10 @@ export function Dashboard() {
           <div>
             <h1 className="text-xl font-semibold text-slate-900">Material Test Certificates</h1>
             <p className="text-sm text-slate-500">
-              Sri Gnanamurugan Foundry — IS 210:2009 (BIS Annexure-I)
+              Sri Gnanamurugan Foundry — IS 210:2009 (BIS Annexure-I) · shared cloud database
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Restore backup
-            </button>
-            <button
-              onClick={() => void downloadBackup()}
-              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Backup
-            </button>
             <button
               onClick={() => setShowSettings(true)}
               className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
@@ -152,25 +169,19 @@ export function Dashboard() {
               Settings
             </button>
             <Link
-              href="/certificates/new"
+              href="/certificates/new/"
               className="rounded-md bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-500"
             >
               + New Certificate
             </Link>
+            <button
+              onClick={() => void logout()}
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50"
+            >
+              Sign out
+            </button>
           </div>
         </div>
-
-        <input
-          ref={fileRef}
-          type="file"
-          accept="application/json,.json"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void onImportFile(f);
-            e.target.value = "";
-          }}
-        />
 
         <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Stat label="Certificates" value={certs ? String(certs.length) : "—"} />
@@ -185,8 +196,14 @@ export function Dashboard() {
             <button onClick={() => setMessage(null)} className="text-slate-400 hover:text-slate-700">✕</button>
           </div>
         ) : null}
+        {error ? (
+          <div className="mt-4 flex items-start justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-700">
+            <span>{error}</span>
+            <button onClick={() => setError(null)} className="text-red-400 hover:text-red-700">✕</button>
+          </div>
+        ) : null}
 
-        <div className="mt-6 flex items-center gap-3">
+        <div className="mt-6 flex flex-wrap items-center gap-3">
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -196,6 +213,28 @@ export function Dashboard() {
           <span className="text-xs text-slate-400">
             {certs === null ? "Loading…" : `${filtered.length} of ${certs.length}`}
           </span>
+          <div className="ml-auto flex gap-2">
+            <button
+              onClick={() => void downloadBackup()}
+              disabled={busy}
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Backup
+            </button>
+            <label className={`cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 ${busy ? "opacity-50" : ""}`}>
+              Restore
+              <input
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void onImportFile(f);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
         </div>
 
         <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -214,7 +253,7 @@ export function Dashboard() {
               {filtered.map((c) => (
                 <tr key={c.id} className="hover:bg-slate-50/70">
                   <td className="px-4 py-3 font-mono text-xs font-semibold text-slate-900">
-                    <Link href={`/certificates/${c.id}`} className="hover:underline">
+                    <Link href={`/certificates/view/?id=${c.id}`} className="hover:underline">
                       {c.certificate_no}
                     </Link>
                   </td>
@@ -239,7 +278,7 @@ export function Dashboard() {
                       <button onClick={() => void duplicate(c)} className="text-slate-700 hover:underline">
                         Duplicate
                       </button>
-                      <Link href={`/certificates/${c.id}`} className="text-blue-600 hover:underline">
+                      <Link href={`/certificates/view/?id=${c.id}`} className="text-blue-600 hover:underline">
                         Edit
                       </Link>
                       <button onClick={() => void remove(c)} className="text-red-600 hover:underline">
@@ -255,7 +294,7 @@ export function Dashboard() {
                     {certs.length === 0 ? (
                       <span>
                         No certificates yet.{" "}
-                        <Link href="/certificates/new" className="text-blue-600 hover:underline">
+                        <Link href="/certificates/new/" className="text-blue-600 hover:underline">
                           Create the first one
                         </Link>
                         .
@@ -271,8 +310,8 @@ export function Dashboard() {
         </div>
 
         <p className="mt-4 text-[11px] leading-relaxed text-slate-400">
-          Everything is stored on this computer (browser database). Take a backup after each batch of
-          certificates — that JSON file is the only copy that survives a browser reset or a new PC.
+          Records are stored in the foundry&apos;s Cloudflare D1 database and are shared by everyone
+          who signs in. The Backup button downloads a JSON snapshot; keep one off-site.
         </p>
       </div>
 

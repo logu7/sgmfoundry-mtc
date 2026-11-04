@@ -1,14 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getMeta, setMeta } from "@/lib/db";
-import { createPinRecord, lockNow, type PinRecord } from "@/lib/pin";
-import {
-  DEFAULT_DEFAULTS,
-  DEFAULT_ISSUER,
-  type Defaults,
-  type Settings,
-} from "@/lib/settings";
+import { useState } from "react";
+import { setMeta } from "@/lib/db";
+import { DEFAULT_DEFAULTS, DEFAULT_ISSUER, type Defaults, type Settings } from "@/lib/settings";
 import { DEFAULT_NUMBERING } from "@/lib/certificate-number";
 
 export function SettingsModal({
@@ -23,40 +17,23 @@ export function SettingsModal({
   const [issuer, setIssuer] = useState(settings.issuer ?? DEFAULT_ISSUER);
   const [numbering, setNumbering] = useState(settings.numbering ?? DEFAULT_NUMBERING);
   const [defaults, setDefaults] = useState<Defaults>(settings.defaults ?? DEFAULT_DEFAULTS);
-  const [hasPin, setHasPin] = useState(false);
-  const [pin, setPin] = useState("");
-  const [pinMsg, setPinMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    getMeta<PinRecord | null>("pin", null).then((r) => setHasPin(!!r));
-  }, []);
+  const [error, setError] = useState<string | null>(null);
 
   async function save() {
     setSaving(true);
-    await setMeta("issuer", issuer);
-    await setMeta("numbering", numbering);
-    await setMeta("defaults", defaults);
-    setSaving(false);
-    onSaved({ issuer, numbering, defaults });
-    onClose();
-  }
-
-  async function applyPin() {
-    if (pin.length < 4) {
-      setPinMsg("Use at least 4 digits.");
-      return;
+    setError(null);
+    try {
+      await setMeta("issuer", issuer);
+      await setMeta("numbering", numbering);
+      await setMeta("defaults", defaults);
+      onSaved({ issuer, numbering, defaults });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save settings.");
+    } finally {
+      setSaving(false);
     }
-    await setMeta("pin", await createPinRecord(pin));
-    setHasPin(true);
-    setPin("");
-    setPinMsg("PIN set. It will be asked on the next unlock.");
-  }
-
-  async function removePin() {
-    await setMeta("pin", null);
-    setHasPin(false);
-    setPinMsg("PIN removed — the app opens without asking.");
   }
 
   return (
@@ -68,6 +45,11 @@ export function SettingsModal({
         </div>
 
         <div className="space-y-5 px-5 py-4">
+          <p className="rounded-md bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+            These are shared with everyone who signs in — they live in the same Cloudflare database
+            as the certificates.
+          </p>
+
           <section className="space-y-3">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Issuer (defaults for new certificates)
@@ -99,8 +81,12 @@ export function SettingsModal({
               />
             </div>
             <p className="text-[11px] text-slate-500">
-              Format: <span className="font-mono">{numbering.prefix}/26-27/{String(numbering.start).padStart(numbering.pad, "0")}</span>.
-              The financial year runs April–March and the counter restarts at the start value each April.
+              Format:{" "}
+              <span className="font-mono">
+                {numbering.prefix}/26-27/{String(numbering.start).padStart(numbering.pad, "0")}
+              </span>
+              . The financial year runs April–March and the counter restarts at the start value each
+              April.
             </p>
           </section>
 
@@ -126,39 +112,9 @@ export function SettingsModal({
             </label>
           </section>
 
-          <section className="space-y-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">App lock</h3>
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                type="password"
-                inputMode="numeric"
-                placeholder="New PIN (4+ digits)"
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                className="w-48 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm outline-none focus:border-slate-500"
-              />
-              <button onClick={applyPin} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-50">
-                {hasPin ? "Change PIN" : "Set PIN"}
-              </button>
-              {hasPin ? (
-                <>
-                  <button onClick={removePin} className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50">
-                    Remove PIN
-                  </button>
-                  <button
-                    onClick={() => {
-                      lockNow();
-                      window.location.reload();
-                    }}
-                    className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-50"
-                  >
-                    Lock now
-                  </button>
-                </>
-              ) : null}
-            </div>
-            {pinMsg ? <p className="text-[11px] text-slate-500">{pinMsg}</p> : null}
-          </section>
+          {error ? (
+            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>
+          ) : null}
         </div>
 
         <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3">
