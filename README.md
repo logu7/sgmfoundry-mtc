@@ -72,6 +72,10 @@ npm run build
 npx wrangler deploy      # publishes to mtc.sgmfoundry.com and sgm-mtc.logu.workers.dev
 ```
 
+Pushes to `main` deploy automatically through Cloudflare Workers Builds
+(Workers & Pages → `sgm-mtc` → Builds: `npm run build`, then `npx wrangler deploy`).
+`npm run deploy` stays as the manual path when a build is not wanted.
+
 Secrets are set once:
 
 ```bash
